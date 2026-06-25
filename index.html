@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FIFA World Cup 2026 — Wall Chart</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <!--
+    To run locally (recommended for fetch/CORS):
+      python -m http.server 8080
+    Then open http://localhost:8080
+  -->
+</head>
+<body>
+  <header class="header">
+    <div class="header__title">
+      <h1>FIFA World Cup 2026</h1>
+      <p class="header__subtitle">Wall Chart</p>
+    </div>
+    <div class="header__controls">
+      <button id="update-btn" type="button" class="btn-update">Update</button>
+      <p id="status" class="status" aria-live="polite">Click Update to load data.</p>
+      <p class="disclaimer">Unofficial fan project — data from wcup2026.org, not affiliated with FIFA.</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="section" aria-labelledby="groups-heading">
+      <h2 id="groups-heading">Group Stage</h2>
+      <div id="groups-grid" class="groups-grid"></div>
+    </section>
+
+    <section class="section" aria-labelledby="knockout-heading">
+      <h2 id="knockout-heading">Knockout Stage</h2>
+      <div id="bracket" class="bracket"></div>
+    </section>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

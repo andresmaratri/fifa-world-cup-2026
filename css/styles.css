@@ -1,0 +1,500 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --fifa-blue: #003087;
+  --fifa-gold: #c9a227;
+  --fifa-green: #1a5c2e;
+  --bg: #0a1628;
+  --surface: #122038;
+  --surface-alt: #1a2d4a;
+  --text: #f0f4f8;
+  --text-muted: #94a3b8;
+  --qualifier: rgba(201, 162, 39, 0.15);
+  --third: rgba(255, 255, 255, 0.04);
+  --live: #ef4444;
+  --border: rgba(255, 255, 255, 0.1);
+  --radius: 8px;
+  /* bracket connector lines */
+  --line: rgba(201, 162, 39, 0.5);
+  --stub: 20px;
+}
+
+html { font-size: 14px; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.4;
+  min-height: 100vh;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, var(--fifa-blue), var(--fifa-green));
+  border-bottom: 3px solid var(--fifa-gold);
+}
+
+.header h1 { margin: 0; font-size: 1.75rem; letter-spacing: 0.02em; }
+
+.header__subtitle {
+  margin: 0.15rem 0 0;
+  color: var(--fifa-gold);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.85rem;
+}
+
+.header__controls { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; }
+
+.btn-update {
+  padding: 0.55rem 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fifa-blue);
+  background: var(--fifa-gold);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.btn-update:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+.btn-update:disabled { opacity: 0.6; cursor: wait; }
+
+.status { margin: 0; font-size: 0.85rem; color: var(--text); }
+
+.disclaimer {
+  margin: 0;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.65);
+  max-width: 22rem;
+  text-align: right;
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────── */
+
+main { padding: 1.25rem 1.5rem 2rem; }
+
+.section { margin-bottom: 2rem; }
+
+.section h2 {
+  margin: 0 0 1rem;
+  font-size: 1.2rem;
+  color: var(--fifa-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+/* ── Group tables ────────────────────────────────────────────────────── */
+
+.groups-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+}
+
+.group-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.group-card__title {
+  margin: 0;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.8rem;
+  background: var(--surface-alt);
+  color: var(--fifa-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.group-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+
+.group-table th,
+.group-table td {
+  padding: 0.25rem 0.35rem;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+.group-table th:first-child,
+.group-table td:first-child { text-align: left; }
+.group-table th { color: var(--text-muted); font-weight: 600; font-size: 0.65rem; }
+.group-table tbody tr:last-child td { border-bottom: none; }
+.group-table tr.qualifier { background: var(--qualifier); }
+.group-table tr.third-place { background: var(--third); }
+
+.team-cell { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+.team-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.flag { width: 18px; height: 13px; object-fit: cover; border-radius: 2px; flex-shrink: 0; }
+.flag--empty {
+  display: inline-block;
+  width: 18px; height: 13px;
+  background: var(--surface-alt);
+  border-radius: 2px;
+}
+
+/* ── Knockout bracket outer ──────────────────────────────────────────── */
+
+.bracket { overflow: hidden; }
+
+/*
+  ko-bracket: the full mirrored tree
+  Layout: [left half: R32|R16|QF|SF] [center: Final+3rd] [right half: SF|QF|R16|R32]
+
+  All connector lines use CSS ::before / ::after pseudo-elements.
+  Total column body height = 640px (8 × 80px slots).
+  Gap between round columns within each half = 40px.
+  Gap between halves and center = 40px.
+
+  Stub logic (left bracket, → flow):
+    each .ko-match::after  = 20px output stub going RIGHT  (toward next round)
+    each .ko-pair::after   = 2px  vertical connector at 20px to the right of column edge
+    each .ko-match::before = 20px input  stub going LEFT   (from previous vertical connector)
+  Mirrored for right bracket (← flow).
+*/
+
+.ko-bracket {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 40px;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+}
+
+.ko-half--left,
+.ko-half--right {
+  display: flex;
+  flex-direction: row;
+  gap: 40px;
+  flex-shrink: 0;
+}
+
+/* ── Round column ────────────────────────────────────────────────────── */
+
+.ko-col {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 136px;
+  overflow: visible;
+}
+
+.ko-col-title {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.58rem;
+  color: var(--fifa-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.ko-col-title--third { color: var(--text-muted); font-size: 0.55rem; }
+.ko-col-title--final { color: var(--fifa-gold); font-size: 0.7rem; font-weight: 700; }
+
+/*
+  ko-col-body: 640px fixed height shared by all rounds.
+  With justify-content: space-around (via ko-pair flex:1), all rounds align:
+    R32 – 4 pairs × 160px each → match centres at 40/120/200/280/360/440/520/600
+    R16 – 2 pairs × 320px each → match centres at 80/240/400/560
+    QF  – 1 pair  × 640px      → match centres at 160/480
+    SF  – 1 match (justify-content:center) → centre at 320
+  All midpoints align perfectly for the connector lines.
+*/
+
+.ko-col-body {
+  height: 640px;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+/* SF single match: centre it vertically */
+.ko-col--sf .ko-col-body { justify-content: center; }
+
+/* ── Bracket pairs ───────────────────────────────────────────────────── */
+
+.ko-pair {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  position: relative;
+  overflow: visible;
+}
+
+/* ── Match card ──────────────────────────────────────────────────────── */
+
+.ko-match {
+  width: 136px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px 4px;
+  position: relative;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+.ko-match--live {
+  border-color: var(--live);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
+}
+.ko-match--done { opacity: 0.92; }
+.ko-match--final {
+  width: 154px;
+  border-color: var(--fifa-gold);
+  border-width: 2px;
+  background: var(--surface-alt);
+}
+
+.ko-team { display: flex; align-items: center; gap: 4px; font-size: 0.63rem; }
+
+.ko-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ko-score {
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--fifa-gold);
+  min-width: 10px;
+  text-align: right;
+}
+.ko-score--empty::after { content: '·'; color: var(--text-muted); font-weight: 400; }
+
+.ko-divider { border: none; border-top: 1px solid var(--border); margin: 3px 0; }
+
+.ko-meta {
+  font-size: 0.52rem;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.ko-live-badge {
+  color: var(--live);
+  font-weight: 700;
+  font-size: 0.52rem;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Center section ──────────────────────────────────────────────────── */
+
+.ko-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.ko-final-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/*
+  ko-final-body mirrors the 640px column body height so the Final match
+  centres at the same y (320px) as both SF matches.
+*/
+.ko-final-body {
+  height: 640px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ko-third-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-top: 20px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CONNECTOR LINES
+   All pseudo-elements on .ko-match (overflow:visible) or .ko-pair.
+
+   LEFT bracket (→ rightward flow):
+   ┌──────────┐─────────────────── output stub (::after, right:-20px)
+   │ ko-match │──────────────────┐ vertical connector (ko-pair::after, right:-20px)
+   └──────────┘                  │
+                                 │ input stub on next col (::before, left:-20px)
+   ┌──────────┐──────────────────┘
+   │ ko-match │──────────────────  (same pattern)
+   └──────────┘
+
+   RIGHT bracket (← leftward flow): mirror image.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── LEFT bracket output stubs (→) ── */
+.ko-half--left .ko-match::after {
+  content: '';
+  position: absolute;
+  right: -20px;
+  top: 50%;
+  width: 20px;
+  height: 2px;
+  background: var(--line);
+  transform: translateY(-50%);
+}
+
+/* ── LEFT bracket vertical connectors ── */
+.ko-half--left .ko-pair::after {
+  content: '';
+  position: absolute;
+  right: -20px;   /* same x as stub end */
+  top: 25%;       /* first match centre within pair */
+  width: 2px;
+  height: 50%;    /* spans from first centre to second centre */
+  background: var(--line);
+}
+
+/* ── LEFT bracket input stubs (for R16 / QF / SF receiving from left) ── */
+.ko-half--left .ko-col--r16 .ko-match::before,
+.ko-half--left .ko-col--qf  .ko-match::before,
+.ko-half--left .ko-col--sf  .ko-match::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  width: 20px;
+  height: 2px;
+  background: var(--line);
+  transform: translateY(-50%);
+}
+
+/* ── RIGHT bracket output stubs (←) ── */
+.ko-half--right .ko-match::after {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  width: 20px;
+  height: 2px;
+  background: var(--line);
+  transform: translateY(-50%);
+}
+
+/* ── RIGHT bracket vertical connectors ── */
+.ko-half--right .ko-pair::after {
+  content: '';
+  position: absolute;
+  left: -20px;    /* same x as stub start */
+  top: 25%;
+  width: 2px;
+  height: 50%;
+  background: var(--line);
+}
+
+/* ── RIGHT bracket input stubs (for SF / QF / R16 receiving from right) ── */
+.ko-half--right .ko-col--sf  .ko-match::before,
+.ko-half--right .ko-col--qf  .ko-match::before,
+.ko-half--right .ko-col--r16 .ko-match::before {
+  content: '';
+  position: absolute;
+  right: -20px;
+  top: 50%;
+  width: 20px;
+  height: 2px;
+  background: var(--line);
+  transform: translateY(-50%);
+}
+
+/* ── Final match: input stubs from both SFs ── */
+.ko-match--final::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  width: 20px;
+  height: 2px;
+  background: var(--line);
+  transform: translateY(-50%);
+}
+.ko-match--final::after {
+  content: '';
+  position: absolute;
+  right: -20px;
+  top: 50%;
+  width: 20px;
+  height: 2px;
+  background: var(--line);
+  transform: translateY(-50%);
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .header { flex-direction: column; }
+  .header__controls { align-items: flex-start; }
+  .disclaimer { text-align: left; }
+  html { font-size: 13px; }
+}
+
+/* ── Print ───────────────────────────────────────────────────────────── */
+
+@media print {
+  @page { size: landscape; margin: 8mm; }
+
+  body { background: #fff; color: #111; font-size: 9pt; }
+
+  .header {
+    background: none;
+    color: #111;
+    border-bottom: 2px solid #003087;
+    padding: 0 0 0.5rem;
+  }
+  .header__subtitle { color: #003087; }
+  .btn-update, .disclaimer { display: none; }
+  .status { color: #333; font-size: 8pt; }
+
+  .section h2 { color: #003087; border-color: #ccc; }
+
+  .groups-grid { grid-template-columns: repeat(4, 1fr); gap: 4px; }
+
+  .group-card, .ko-match {
+    background: #fff;
+    border-color: #ccc;
+    break-inside: avoid;
+  }
+  .group-card__title, .ko-col-title { color: #003087; background: #f0f0f0; }
+  .group-table tr.qualifier { background: #fff8e1; }
+  .ko-score { color: #003087; }
+  .ko-live-badge { color: #c00; animation: none; }
+
+  .ko-bracket { overflow: visible; }
+  --line: rgba(0, 48, 135, 0.4);
+}

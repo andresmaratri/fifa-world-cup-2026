@@ -1,0 +1,107 @@
+const GROUP_RANK = /^([12])([A-L])$/;
+const WINNER = /^W(\d+)$/;
+const LOSER = /^L(\d+)$/;
+
+function looksLikeRealTeam(name) {
+  if (!name) return false;
+  return !GROUP_RANK.test(name) && !WINNER.test(name) && !LOSER.test(name);
+}
+
+function getGroupLetter(groupName) {
+  const match = groupName.match(/Group\s+([A-L])/i);
+  return match ? match[1] : null;
+}
+
+function getStandingsTeam(standings, groupLetter, rank) {
+  const groupKey = `Group ${groupLetter}`;
+  const rows = standings[groupKey];
+  if (!rows || rows.length < rank) return null;
+  return rows[rank - 1].team;
+}
+
+function getMatchWinner(match) {
+  if (match.status !== 'finished' || !match.score) return null;
+  const [a, b] = match.score;
+  if (a > b) return match.team1;
+  if (b > a) return match.team2;
+  return null;
+}
+
+function getMatchLoser(match) {
+  if (match.status !== 'finished' || !match.score) return null;
+  const [a, b] = match.score;
+  if (a > b) return match.team2;
+  if (b > a) return match.team1;
+  return null;
+}
+
+function findMatchByFixtureNum(matches, num) {
+  const id = Number(num) - 1;
+  return matches.find((m) => m.id === id) || null;
+}
+
+function formatPlaceholder(code) {
+  const groupMatch = code.match(GROUP_RANK);
+  if (groupMatch) {
+    const rank = groupMatch[1] === '1' ? '1st' : '2nd';
+    return `${rank} Group ${groupMatch[2]}`;
+  }
+  const winMatch = code.match(WINNER);
+  if (winMatch) return `Winner M${winMatch[1]}`;
+  const loseMatch = code.match(LOSER);
+  if (loseMatch) return `Loser M${loseMatch[1]}`;
+  if (/^3/.test(code)) return `3rd (${code.slice(1)})`;
+  return code;
+}
+
+export function resolveTeamName(code, standings, matches) {
+  if (looksLikeRealTeam(code)) return code;
+
+  const groupMatch = code.match(GROUP_RANK);
+  if (groupMatch) {
+    const team = getStandingsTeam(standings, groupMatch[2], Number(groupMatch[1]));
+    if (team) return team;
+    return formatPlaceholder(code);
+  }
+
+  const winMatch = code.match(WINNER);
+  if (winMatch) {
+    const match = findMatchByFixtureNum(matches, winMatch[1]);
+    const winner = match ? getMatchWinner(match) : null;
+    if (winner && looksLikeRealTeam(winner)) return winner;
+    if (winner) return resolveTeamName(winner, standings, matches);
+    return formatPlaceholder(code);
+  }
+
+  const loseMatch = code.match(LOSER);
+  if (loseMatch) {
+    const match = findMatchByFixtureNum(matches, loseMatch[1]);
+    const loser = match ? getMatchLoser(match) : null;
+    if (loser && looksLikeRealTeam(loser)) return loser;
+    if (loser) return resolveTeamName(loser, standings, matches);
+    return formatPlaceholder(code);
+  }
+
+  return formatPlaceholder(code);
+}
+
+export function enrichMatches(matches, standings) {
+  return matches.map((match) => ({
+    ...match,
+    resolvedTeam1: resolveTeamName(match.team1, standings, matches),
+    resolvedTeam2: resolveTeamName(match.team2, standings, matches),
+  }));
+}
+
+export function buildTeamFlagMap(matches) {
+  const map = {};
+  for (const m of matches) {
+    if (m.team1 && m.flag1) map[m.team1] = m.flag1;
+    if (m.team2 && m.flag2) map[m.team2] = m.flag2;
+    if (m.resolvedTeam1 && m.flag1) map[m.resolvedTeam1] = m.flag1;
+    if (m.resolvedTeam2 && m.flag2) map[m.resolvedTeam2] = m.flag2;
+  }
+  return map;
+}
+
+export { getGroupLetter, looksLikeRealTeam };

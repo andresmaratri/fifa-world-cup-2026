@@ -7,15 +7,18 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-# ─── Background image (base64-encoded so it works locally and on Streamlit Cloud)
+# ─── Asset helpers ───────────────────────────────────────────────────────────────
 
-def _b64_data_url(path: str) -> str:
-    data = pathlib.Path(path).read_bytes()
+_ASSETS = pathlib.Path(__file__).parent / "assets"
+
+
+def _b64_img(path: pathlib.Path) -> str:
+    data = path.read_bytes()
     b64 = base64.b64encode(data).decode()
     return f"data:image/png;base64,{b64}"
 
-_ASSETS = pathlib.Path(__file__).parent / "assets"
-BG_DATA_URL = _b64_data_url(_ASSETS / "bg.png")
+
+LOGO_DATA_URL = _b64_img(_ASSETS / "logo.png")
 
 # ─── Page config ────────────────────────────────────────────────────────────────
 
@@ -339,12 +342,7 @@ html{font-size:14px}
 body{
   margin:0;
   font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-  background-image:{BG};
-  background-size:cover;
-  background-position:center;
-  background-attachment:fixed;
-  background-color:var(--bg);
-  color:var(--text);line-height:1.4;
+  background:var(--bg);color:var(--text);line-height:1.4;
 }
 h2{
   margin:0 0 1rem;font-size:1.2rem;color:var(--fifa-gold);
@@ -462,12 +460,11 @@ def build_wall_html(standings, enriched, flag_map):
         _group_card(g, standings[g], flag_map) for g in GROUP_ORDER if g in standings
     )
     bracket = _bracket(enriched, flag_map)
-    css = WALL_CSS.replace("{BG}", f'url("{BG_DATA_URL}")')
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<style>{css}</style>
+<style>{WALL_CSS}</style>
 </head>
 <body>
 <div class="section">
@@ -484,23 +481,27 @@ def build_wall_html(standings, enriched, flag_map):
 
 # ─── Streamlit UI ────────────────────────────────────────────────────────────────
 
-# Page background + theme overrides
+# Dark background to match the wall chart theme
+st.markdown(
+    """
+    <style>
+      [data-testid="stAppViewContainer"] > .main { background: #0a1628; }
+      [data-testid="stHeader"] { background: transparent; }
+      section[data-testid="stSidebar"] { display: none; }
+      .block-container { padding-top: 1rem !important; }
+      div[data-testid="stMarkdownContainer"] h1 { color: #f0f4f8; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Logo
 st.markdown(
     f"""
-    <style>
-      [data-testid="stAppViewContainer"] {{
-        background-image: url("{BG_DATA_URL}");
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-        background-color: #0a1628;
-      }}
-      [data-testid="stAppViewContainer"] > .main {{ background: transparent; }}
-      [data-testid="stHeader"] {{ background: transparent; }}
-      section[data-testid="stSidebar"] {{ display: none; }}
-      .block-container {{ padding-top: 1rem !important; }}
-      div[data-testid="stMarkdownContainer"] h1 {{ color: #f0f4f8; }}
-    </style>
+    <div style="text-align:center;padding:1rem 0 0.25rem">
+      <img src="{LOGO_DATA_URL}"
+           style="height:200px;width:auto;object-fit:contain;mix-blend-mode:lighten;" alt="IUGA Electronics">
+    </div>
     """,
     unsafe_allow_html=True,
 )

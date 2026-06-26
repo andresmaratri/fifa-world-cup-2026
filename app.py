@@ -1,9 +1,21 @@
+import base64
+import pathlib
 import re
 from datetime import datetime
 
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
+
+# ─── Background image (base64-encoded so it works locally and on Streamlit Cloud)
+
+def _b64_data_url(path: str) -> str:
+    data = pathlib.Path(path).read_bytes()
+    b64 = base64.b64encode(data).decode()
+    return f"data:image/png;base64,{b64}"
+
+_ASSETS = pathlib.Path(__file__).parent / "assets"
+BG_DATA_URL = _b64_data_url(_ASSETS / "bg.png")
 
 # ─── Page config ────────────────────────────────────────────────────────────────
 
@@ -327,7 +339,12 @@ html{font-size:14px}
 body{
   margin:0;
   font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-  background:var(--bg);color:var(--text);line-height:1.4;
+  background-image:{BG};
+  background-size:cover;
+  background-position:center;
+  background-attachment:fixed;
+  background-color:var(--bg);
+  color:var(--text);line-height:1.4;
 }
 h2{
   margin:0 0 1rem;font-size:1.2rem;color:var(--fifa-gold);
@@ -445,11 +462,12 @@ def build_wall_html(standings, enriched, flag_map):
         _group_card(g, standings[g], flag_map) for g in GROUP_ORDER if g in standings
     )
     bracket = _bracket(enriched, flag_map)
+    css = WALL_CSS.replace("{BG}", f'url("{BG_DATA_URL}")')
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<style>{WALL_CSS}</style>
+<style>{css}</style>
 </head>
 <body>
 <div class="section">
@@ -466,15 +484,22 @@ def build_wall_html(standings, enriched, flag_map):
 
 # ─── Streamlit UI ────────────────────────────────────────────────────────────────
 
-# Dark background to match the wall chart theme
+# Page background + theme overrides
 st.markdown(
-    """
+    f"""
     <style>
-      [data-testid="stAppViewContainer"] > .main { background: #0a1628; }
-      [data-testid="stHeader"] { background: transparent; }
-      section[data-testid="stSidebar"] { display: none; }
-      .block-container { padding-top: 1rem !important; }
-      div[data-testid="stMarkdownContainer"] h1 { color: #f0f4f8; }
+      [data-testid="stAppViewContainer"] {{
+        background-image: url("{BG_DATA_URL}");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+        background-color: #0a1628;
+      }}
+      [data-testid="stAppViewContainer"] > .main {{ background: transparent; }}
+      [data-testid="stHeader"] {{ background: transparent; }}
+      section[data-testid="stSidebar"] {{ display: none; }}
+      .block-container {{ padding-top: 1rem !important; }}
+      div[data-testid="stMarkdownContainer"] h1 {{ color: #f0f4f8; }}
     </style>
     """,
     unsafe_allow_html=True,

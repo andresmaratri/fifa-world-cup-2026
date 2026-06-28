@@ -1,10 +1,13 @@
+import { resolveThirdPlaceCode, formatThirdPlaceholder } from './thirdPlace.js';
+
 const GROUP_RANK = /^([12])([A-L])$/;
 const WINNER = /^W(\d+)$/;
 const LOSER = /^L(\d+)$/;
+const THIRD = /^3/;
 
 function looksLikeRealTeam(name) {
   if (!name) return false;
-  return !GROUP_RANK.test(name) && !WINNER.test(name) && !LOSER.test(name);
+  return !GROUP_RANK.test(name) && !WINNER.test(name) && !LOSER.test(name) && !THIRD.test(name);
 }
 
 function getGroupLetter(groupName) {
@@ -54,7 +57,7 @@ function formatPlaceholder(code) {
   return code;
 }
 
-export function resolveTeamName(code, standings, matches) {
+export function resolveTeamName(code, standings, matches, matchId) {
   if (looksLikeRealTeam(code)) return code;
 
   const groupMatch = code.match(GROUP_RANK);
@@ -69,7 +72,7 @@ export function resolveTeamName(code, standings, matches) {
     const match = findMatchByFixtureNum(matches, winMatch[1]);
     const winner = match ? getMatchWinner(match) : null;
     if (winner && looksLikeRealTeam(winner)) return winner;
-    if (winner) return resolveTeamName(winner, standings, matches);
+    if (winner) return resolveTeamName(winner, standings, matches, matchId);
     return formatPlaceholder(code);
   }
 
@@ -78,8 +81,14 @@ export function resolveTeamName(code, standings, matches) {
     const match = findMatchByFixtureNum(matches, loseMatch[1]);
     const loser = match ? getMatchLoser(match) : null;
     if (loser && looksLikeRealTeam(loser)) return loser;
-    if (loser) return resolveTeamName(loser, standings, matches);
+    if (loser) return resolveTeamName(loser, standings, matches, matchId);
     return formatPlaceholder(code);
+  }
+
+  if (THIRD.test(code)) {
+    const team = resolveThirdPlaceCode(code, standings, matchId);
+    if (team) return team;
+    return formatThirdPlaceholder(code);
   }
 
   return formatPlaceholder(code);
@@ -88,8 +97,8 @@ export function resolveTeamName(code, standings, matches) {
 export function enrichMatches(matches, standings) {
   return matches.map((match) => ({
     ...match,
-    resolvedTeam1: resolveTeamName(match.team1, standings, matches),
-    resolvedTeam2: resolveTeamName(match.team2, standings, matches),
+    resolvedTeam1: resolveTeamName(match.team1, standings, matches, match.id),
+    resolvedTeam2: resolveTeamName(match.team2, standings, matches, match.id),
   }));
 }
 

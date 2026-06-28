@@ -1,11 +1,14 @@
 import base64
 import pathlib
 import re
+import time
 from datetime import datetime
 
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
+
+from third_place import format_third_placeholder, resolve_third_place_code
 
 # ─── Asset helpers ───────────────────────────────────────────────────────────────
 
@@ -32,18 +35,51 @@ st.set_page_config(
 # ─── API ────────────────────────────────────────────────────────────────────────
 
 API_BASE = "https://wcup2026.org/api/data.php"
+# (connect timeout, read timeout) — wcup2026.org can be slow
+_API_TIMEOUT = (10, 45)
+_API_RETRIES = 3
+_API_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://wcup2026.org/",
+}
 
 
 def load_data():
+    session = requests.Session()
+    session.headers.update(_API_HEADERS)
+
     def fetch_action(action):
-        r = requests.get(f"{API_BASE}?action={action}", timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        if not data.get("ok"):
-            raise ValueError(data.get("error", f"API error for {action}"))
-        return data
+        url = f"{API_BASE}?action={action}"
+        last_err = None
+        for attempt in range(_API_RETRIES):
+            try:
+                r = session.get(url, timeout=_API_TIMEOUT)
+                if r.status_code == 403:
+                    raise requests.HTTPError(
+                        f"403 Forbidden for {action}", response=r
+                    )
+                r.raise_for_status()
+                data = r.json()
+                if not data.get("ok"):
+                    raise ValueError(data.get("error", f"API error for {action}"))
+                return data
+            except (
+                requests.Timeout,
+                requests.ConnectionError,
+                requests.HTTPError,
+            ) as exc:
+                last_err = exc
+                if attempt < _API_RETRIES - 1:
+                    time.sleep(2**attempt)
+        raise last_err
 
     standings_data = fetch_action("standings")
+    time.sleep(0.5)
     all_data = fetch_action("all")
     return {
         "standings": standings_data["standings"],
@@ -67,6 +103,7 @@ def _looks_like_real_team(name):
         not _GROUP_RANK.match(name)
         and not _WINNER.match(name)
         and not _LOSER.match(name)
+        and not _THIRD.match(name)
     )
 
 
@@ -118,7 +155,7 @@ def _loser(match):
     return None
 
 
-def resolve_name(code, standings, matches, depth=0):
+def resolve_name(code, standings, matches, match_id=None, depth=0):
     if depth > 20 or not code:
         return _fmt_placeholder(code or "")
     if _looks_like_real_team(code):
@@ -134,7 +171,7 @@ def resolve_name(code, standings, matches, depth=0):
         if w and _looks_like_real_team(w):
             return w
         if w:
-            return resolve_name(w, standings, matches, depth + 1)
+            return resolve_name(w, standings, matches, match_id, depth + 1)
         return _fmt_placeholder(code)
     m = _LOSER.match(code)
     if m:
@@ -143,8 +180,13 @@ def resolve_name(code, standings, matches, depth=0):
         if lo and _looks_like_real_team(lo):
             return lo
         if lo:
-            return resolve_name(lo, standings, matches, depth + 1)
+            return resolve_name(lo, standings, matches, match_id, depth + 1)
         return _fmt_placeholder(code)
+    if _THIRD.match(code):
+        team = resolve_third_place_code(code, standings, match_id)
+        if team:
+            return team
+        return format_third_placeholder(code)
     return _fmt_placeholder(code)
 
 
@@ -152,8 +194,12 @@ def enrich_matches(matches, standings):
     return [
         {
             **m,
-            "resolvedTeam1": resolve_name(m.get("team1", ""), standings, matches),
-            "resolvedTeam2": resolve_name(m.get("team2", ""), standings, matches),
+            "resolvedTeam1": resolve_name(
+                m.get("team1", ""), standings, matches, m.get("id")
+            ),
+            "resolvedTeam2": resolve_name(
+                m.get("team2", ""), standings, matches, m.get("id")
+            ),
         }
         for m in matches
     ]
@@ -560,7 +606,14 @@ if update_clicked or auto_load:
             st.session_state.wc_error = str(exc)
 
 if st.session_state.wc_error:
-    status_box.error(f"Update failed: {st.session_state.wc_error}")
+    msg = st.session_state.wc_error
+    if "timed out" in msg.lower() or "timeout" in msg.lower():
+        msg = "The data server is slow or unreachable. Please try Update again."
+    elif "403" in msg or "forbidden" in msg.lower():
+        msg = "The data server blocked the request. Please try Update again in a moment."
+    status_box.error(f"Update failed: {msg}")
+    if st.session_state.wc_data:
+        status_box.caption("Showing previously loaded data.")
 elif st.session_state.wc_updated:
     ts = st.session_state.wc_updated.strftime("%b %d, %Y %H:%M")
     status_box.caption(f"Last updated: {ts}")

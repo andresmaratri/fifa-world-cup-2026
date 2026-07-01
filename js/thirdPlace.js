@@ -514,18 +514,38 @@ for (const letters of ANNEX_C_ROWS) {
   THIRD_LOOKUP.set(combo, byWinner);
 }
 
+const GROUP_LETTERS = "ABCDEFGHIJKL";
+
+export function isGroupStageComplete(standings) {
+  for (const letter of GROUP_LETTERS) {
+    const rows = standings[`Group ${letter}`];
+    if (!rows || rows.length < 3) return false;
+    if ((rows[2].p || 0) < 3) return false;
+  }
+  return true;
+}
+
 function standingsThird(standings, letter) {
   const rows = standings[`Group ${letter}`];
   return rows && rows.length >= 3 ? rows[2].team : null;
 }
 
-export function pickQualifyingThirds(standings) {
+export function pickQualifyingThirds(standings, source) {
   const thirds = [];
   for (const [groupName, rows] of Object.entries(standings)) {
     if (rows.length >= 3) {
       thirds.push({ group: groupName.replace("Group ", ""), row: rows[2] });
     }
   }
+
+  if (source === "wcup2026.org") {
+    const ranked = thirds.filter((t) => t.row.qual_rank != null);
+    if (ranked.length >= 8) {
+      ranked.sort((a, b) => a.row.qual_rank - b.row.qual_rank);
+      return ranked.slice(0, 8);
+    }
+  }
+
   thirds.sort(
     (a, b) =>
       b.row.pts - a.row.pts ||
@@ -535,20 +555,22 @@ export function pickQualifyingThirds(standings) {
   return thirds.slice(0, 8);
 }
 
-export function thirdPlaceAssignment(standings) {
-  const qual = pickQualifyingThirds(standings);
+export function thirdPlaceAssignment(standings, source) {
+  if (!isGroupStageComplete(standings)) return null;
+  const qual = pickQualifyingThirds(standings, source);
   if (qual.length < 8) return null;
   const combo = qual.map((q) => q.group).sort().join("");
   return THIRD_LOOKUP.get(combo) || null;
 }
 
-export function resolveThirdPlaceCode(code, standings, matchId) {
+export function resolveThirdPlaceCode(code, standings, matchId, source) {
   if (!code || !code.startsWith("3")) return null;
   if (code.length === 2 && /[A-L]/.test(code[1])) {
     return standingsThird(standings, code[1]);
   }
   if (code.includes("/")) {
-    const assignment = thirdPlaceAssignment(standings);
+    if (!isGroupStageComplete(standings)) return null;
+    const assignment = thirdPlaceAssignment(standings, source);
     if (!assignment || matchId == null) return null;
     const winner = THIRD_PLACE_MATCH_WINNERS[matchId];
     if (!winner || !assignment[winner]) return null;

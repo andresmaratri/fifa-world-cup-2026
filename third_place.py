@@ -517,31 +517,56 @@ def _build_lookup():
 _THIRD_LOOKUP = _build_lookup()
 
 
-def pick_qualifying_thirds(standings):
+GROUP_LETTERS = "ABCDEFGHIJKL"
+
+
+def is_group_stage_complete(standings):
+    """True when every group has played 3 matchdays (third row p >= 3)."""
+    for letter in GROUP_LETTERS:
+        rows = standings.get(f"Group {letter}", [])
+        if len(rows) < 3:
+            return False
+        if rows[2].get("p", 0) < 3:
+            return False
+    return True
+
+
+def pick_qualifying_thirds(standings, source=None):
     thirds = []
     for group_name, rows in standings.items():
         if len(rows) >= 3:
             letter = group_name.replace("Group ", "")
             thirds.append({"group": letter, "row": rows[2]})
+
+    if source == "wcup2026.org":
+        ranked = [t for t in thirds if t["row"].get("qual_rank") is not None]
+        if len(ranked) >= 8:
+            ranked.sort(key=lambda t: t["row"]["qual_rank"])
+            return ranked[:8]
+
     thirds.sort(key=lambda t: (-t["row"]["pts"], -t["row"]["gd"], -t["row"]["gf"]))
     return thirds[:8]
 
 
-def third_place_assignment(standings):
-    qual = pick_qualifying_thirds(standings)
+def third_place_assignment(standings, source=None):
+    if not is_group_stage_complete(standings):
+        return None
+    qual = pick_qualifying_thirds(standings, source=source)
     if len(qual) < 8:
         return None
     combo = "".join(sorted(q["group"] for q in qual))
     return _THIRD_LOOKUP.get(combo)
 
 
-def resolve_third_place_code(code, standings, match_id=None):
+def resolve_third_place_code(code, standings, match_id=None, source=None):
     if not code or not code.startswith("3"):
         return None
     if len(code) == 2 and code[1].isalpha():
         return _standings_third(standings, code[1])
     if "/" in code:
-        assignment = third_place_assignment(standings)
+        if not is_group_stage_complete(standings):
+            return None
+        assignment = third_place_assignment(standings, source=source)
         if not assignment or match_id is None:
             return None
         winner = THIRD_PLACE_MATCH_WINNERS.get(match_id)

@@ -1,13 +1,12 @@
 import base64
 import pathlib
 import re
-import time
 from datetime import datetime
 
-import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
+from data_loader import load_data
 from third_place import format_third_placeholder, resolve_third_place_code
 
 # ─── Asset helpers ───────────────────────────────────────────────────────────────
@@ -31,62 +30,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
-
-# ─── API ────────────────────────────────────────────────────────────────────────
-
-API_BASE = "https://wcup2026.org/api/data.php"
-# (connect timeout, read timeout) — wcup2026.org can be slow
-_API_TIMEOUT = (10, 45)
-_API_RETRIES = 3
-_API_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json, text/plain, */*",
-    "Referer": "https://wcup2026.org/",
-}
-
-
-def load_data():
-    session = requests.Session()
-    session.headers.update(_API_HEADERS)
-
-    def fetch_action(action):
-        url = f"{API_BASE}?action={action}"
-        last_err = None
-        for attempt in range(_API_RETRIES):
-            try:
-                r = session.get(url, timeout=_API_TIMEOUT)
-                if r.status_code == 403:
-                    raise requests.HTTPError(
-                        f"403 Forbidden for {action}", response=r
-                    )
-                r.raise_for_status()
-                data = r.json()
-                if not data.get("ok"):
-                    raise ValueError(data.get("error", f"API error for {action}"))
-                return data
-            except (
-                requests.Timeout,
-                requests.ConnectionError,
-                requests.HTTPError,
-            ) as exc:
-                last_err = exc
-                if attempt < _API_RETRIES - 1:
-                    time.sleep(2**attempt)
-        raise last_err
-
-    standings_data = fetch_action("standings")
-    time.sleep(0.5)
-    all_data = fetch_action("all")
-    return {
-        "standings": standings_data["standings"],
-        "matches": all_data["matches"],
-        "updatedAt": datetime.utcnow().isoformat(),
-    }
-
 
 # ─── Team name resolution ────────────────────────────────────────────────────────
 
@@ -133,10 +76,32 @@ def _find_match(matches, fixture_num):
     return next((m for m in matches if m["id"] == mid), None)
 
 
-def _winner(match):
-    if not match or match.get("status") != "finished" or not match.get("score"):
+def _pen_score(match):
+    for key in ("pen", "pens", "penalties", "penalty", "score_pen"):
+        val = match.get(key)
+        if isinstance(val, (list, tuple)) and len(val) >= 2:
+            return [int(val[0]), int(val[1])]
+    return None
+
+
+def _effective_score(match):
+    if not match or match.get("status") != "finished":
         return None
-    a, b = match["score"]
+    score = match.get("score")
+    if not score or not isinstance(score, (list, tuple)) or len(score) < 2:
+        return None
+    a, b = int(score[0]), int(score[1])
+    if a != b:
+        return [a, b]
+    pens = _pen_score(match)
+    return pens if pens else [a, b]
+
+
+def _winner(match):
+    score = _effective_score(match)
+    if not score:
+        return None
+    a, b = score
     if a > b:
         return match.get("team1")
     if b > a:
@@ -145,9 +110,10 @@ def _winner(match):
 
 
 def _loser(match):
-    if not match or match.get("status") != "finished" or not match.get("score"):
+    score = _effective_score(match)
+    if not score:
         return None
-    a, b = match["score"]
+    a, b = score
     if a > b:
         return match.get("team2")
     if b > a:
@@ -155,7 +121,7 @@ def _loser(match):
     return None
 
 
-def resolve_name(code, standings, matches, match_id=None, depth=0):
+def resolve_name(code, standings, matches, match_id=None, source=None, depth=0):
     if depth > 20 or not code:
         return _fmt_placeholder(code or "")
     if _looks_like_real_team(code):
@@ -171,7 +137,7 @@ def resolve_name(code, standings, matches, match_id=None, depth=0):
         if w and _looks_like_real_team(w):
             return w
         if w:
-            return resolve_name(w, standings, matches, match_id, depth + 1)
+            return resolve_name(w, standings, matches, match_id, source, depth + 1)
         return _fmt_placeholder(code)
     m = _LOSER.match(code)
     if m:
@@ -180,33 +146,54 @@ def resolve_name(code, standings, matches, match_id=None, depth=0):
         if lo and _looks_like_real_team(lo):
             return lo
         if lo:
-            return resolve_name(lo, standings, matches, match_id, depth + 1)
+            return resolve_name(lo, standings, matches, match_id, source, depth + 1)
         return _fmt_placeholder(code)
     if _THIRD.match(code):
-        team = resolve_third_place_code(code, standings, match_id)
+        team = resolve_third_place_code(code, standings, match_id, source=source)
         if team:
             return team
         return format_third_placeholder(code)
     return _fmt_placeholder(code)
 
 
-def enrich_matches(matches, standings):
-    return [
-        {
-            **m,
-            "resolvedTeam1": resolve_name(
-                m.get("team1", ""), standings, matches, m.get("id")
-            ),
-            "resolvedTeam2": resolve_name(
-                m.get("team2", ""), standings, matches, m.get("id")
-            ),
-        }
-        for m in matches
-    ]
+def enrich_matches(matches, standings, source=None):
+    enriched = []
+    for m in matches:
+        enriched.append(
+            {
+                **m,
+                "resolvedTeam1": resolve_name(
+                    m.get("team1", ""), standings, matches, m.get("id"), source
+                ),
+                "resolvedTeam2": resolve_name(
+                    m.get("team2", ""), standings, matches, m.get("id"), source
+                ),
+            }
+        )
+
+    for m in sorted(
+        (x for x in enriched if x.get("id", 0) >= 72), key=lambda x: x["id"]
+    ):
+        m["resolvedTeam1"] = resolve_name(
+            m.get("team1", ""), standings, matches, m.get("id"), source
+        )
+        m["resolvedTeam2"] = resolve_name(
+            m.get("team2", ""), standings, matches, m.get("id"), source
+        )
+
+    return enriched
 
 
 def build_flag_map(matches):
-    fm = {}
+    name_flags = {}
+    for m in matches:
+        if not m.get("group", "").startswith("Group"):
+            continue
+        for tk, fk in [("team1", "flag1"), ("team2", "flag2")]:
+            if m.get(tk) and m.get(fk):
+                name_flags[m[tk]] = m[fk]
+
+    fm = dict(name_flags)
     for m in matches:
         for tk, fk in [
             ("team1", "flag1"),
@@ -216,6 +203,10 @@ def build_flag_map(matches):
         ]:
             if m.get(tk) and m.get(fk):
                 fm[m[tk]] = m[fk]
+        for rk in ("resolvedTeam1", "resolvedTeam2"):
+            name = m.get(rk)
+            if name and name in name_flags:
+                fm[name] = name_flags[name]
     return fm
 
 
@@ -616,7 +607,10 @@ if st.session_state.wc_error:
         status_box.caption("Showing previously loaded data.")
 elif st.session_state.wc_updated:
     ts = st.session_state.wc_updated.strftime("%b %d, %Y %H:%M")
-    status_box.caption(f"Last updated: {ts}")
+    src = ""
+    if st.session_state.wc_data and st.session_state.wc_data.get("source"):
+        src = f" ({st.session_state.wc_data['source']})"
+    status_box.caption(f"Last updated: {ts}{src}")
 else:
     status_box.caption("Click Update to load data.")
 
@@ -624,7 +618,7 @@ else:
 
 if st.session_state.wc_data:
     d = st.session_state.wc_data
-    enriched = enrich_matches(d["matches"], d["standings"])
+    enriched = enrich_matches(d["matches"], d["standings"], d.get("source"))
     flag_map = build_flag_map(enriched)
     html = build_wall_html(d["standings"], enriched, flag_map)
     components.html(html, height=2200, scrolling=True)

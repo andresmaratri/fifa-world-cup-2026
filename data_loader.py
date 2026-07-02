@@ -101,9 +101,13 @@ def _parse_openfootball_score(score_obj):
     ft = score_obj.get("ft")
     if not ft:
         return None, "scheduled"
-    pens = score_obj.get("p")
-    if pens and ft[0] == ft[1]:
-        return [int(pens[0]), int(pens[1])], "finished"
+    if ft[0] == ft[1]:
+        pens = score_obj.get("p")
+        if pens:
+            return [int(pens[0]), int(pens[1])], "finished"
+        et = score_obj.get("et")
+        if et:
+            return [int(et[0]), int(et[1])], "finished"
     return [int(ft[0]), int(ft[1])], "finished"
 
 
@@ -126,8 +130,22 @@ def _pen_score_from_match(match):
     return None
 
 
+def _et_score_from_match(match):
+    """Extract extra-time score from wcup-style match fields."""
+    for key in ("et", "extra_time", "aet", "score_et"):
+        val = match.get(key)
+        if isinstance(val, (list, tuple)) and len(val) >= 2:
+            return [int(val[0]), int(val[1])]
+    score_obj = match.get("scoreObj") or match.get("scores")
+    if isinstance(score_obj, dict):
+        et = score_obj.get("et")
+        if isinstance(et, (list, tuple)) and len(et) >= 2:
+            return [int(et[0]), int(et[1])]
+    return None
+
+
 def normalize_match_score(match):
-    """Normalize score so penalty winners are reflected in score list."""
+    """Normalize score so ET/penalty winners are reflected in score list."""
     score = match.get("score")
     if not score or not isinstance(score, (list, tuple)) or len(score) < 2:
         return score
@@ -137,6 +155,9 @@ def normalize_match_score(match):
     pens = _pen_score_from_match(match)
     if pens:
         return pens
+    et = _et_score_from_match(match)
+    if et:
+        return et
     return [a, b]
 
 

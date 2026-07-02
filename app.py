@@ -84,6 +84,14 @@ def _pen_score(match):
     return None
 
 
+def _et_score(match):
+    for key in ("et", "extra_time", "aet", "score_et"):
+        val = match.get(key)
+        if isinstance(val, (list, tuple)) and len(val) >= 2:
+            return [int(val[0]), int(val[1])]
+    return None
+
+
 def _effective_score(match):
     if not match or match.get("status") != "finished":
         return None
@@ -94,7 +102,12 @@ def _effective_score(match):
     if a != b:
         return [a, b]
     pens = _pen_score(match)
-    return pens if pens else [a, b]
+    if pens:
+        return pens
+    et = _et_score(match)
+    if et:
+        return et
+    return [a, b]
 
 
 def _winner(match):

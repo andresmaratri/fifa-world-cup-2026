@@ -31,12 +31,24 @@ function getPenScore(match) {
   return null;
 }
 
+function getEtScore(match) {
+  if (!match) return null;
+  for (const key of ['et', 'extra_time', 'aet', 'score_et']) {
+    const val = match[key];
+    if (Array.isArray(val) && val.length >= 2) return [Number(val[0]), Number(val[1])];
+  }
+  return null;
+}
+
 function getEffectiveScore(match) {
   if (!match || match.status !== 'finished' || !match.score) return null;
   const [a, b] = match.score;
   if (a !== b) return match.score;
   const pens = getPenScore(match);
-  return pens || match.score;
+  if (pens) return pens;
+  const et = getEtScore(match);
+  if (et) return et;
+  return match.score;
 }
 
 function getMatchWinner(match) {
